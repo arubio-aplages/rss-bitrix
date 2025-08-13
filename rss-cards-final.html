@@ -1,0 +1,202 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width,initial-scale=1" />
+<title>Últimas publicaciones (Final)</title>
+<link href="https://fonts.googleapis.com/css2?family=Poppins:wght@400;500;600&display=swap" rel="stylesheet" />
+<style>
+  :root{
+    --maxw: 1160px;   /* ancho máximo del bloque: AJÚSTALO si tu bloque anterior usa otra medida */
+    --pad: 24px;      /* padding lateral */
+    --gap: 24px;      /* separación entre tarjetas */
+    --radius: 3px;
+    --shadow: 0 6px 18px rgba(0,0,0,.06);
+    --label: #ee7b19;   /* etiqueta naranja */
+    --label-text: #fff;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;background:#fff;font-family:'Poppins',system-ui,-apple-system,Segoe UI,Roboto,Arial,sans-serif;}
+  #rss-grid{width:100%;}
+  .rss-container{
+    max-width: var(--maxw);
+    margin-inline: auto;
+    padding-inline: var(--pad);
+    padding-block: 24px;
+  }
+  .rss-list{
+    display:grid;
+    gap: var(--gap);
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+    align-items: stretch;
+  }
+  @media (max-width: 1200px){ .rss-list{ grid-template-columns: repeat(3, 1fr); } }
+  @media (max-width: 900px){  .rss-list{ grid-template-columns: repeat(2, 1fr); gap:20px; } }
+  @media (max-width: 600px){  .rss-list{ grid-template-columns: 1fr; gap:18px; } }
+
+  .post-card{display:flex;flex-direction:column;height:100%;
+    border:1px solid rgba(0,0,0,.08);border-radius:var(--radius);
+    overflow:hidden;background:#fff;box-shadow:var(--shadow);}
+  .image-wrap{position:relative;width:100%;aspect-ratio:16/9;background:#f2f4f7;overflow:hidden;}
+  .image-wrap img{width:100%;height:100%;object-fit:cover;display:block;image-rendering:auto;}
+  .badge{position:absolute;top:12px;right:12px;background:var(--label);color:var(--label-text);
+    font-size:12px;font-weight:600;padding:6px 10px;border-radius:999px;
+    box-shadow:0 2px 8px rgba(0,0,0,.15);max-width:65%;
+    white-space:nowrap;text-overflow:ellipsis;overflow:hidden;}
+  .content{padding:16px;display:flex;flex-direction:column;gap:10px;flex:1;}
+  .title{font-size:18px;line-height:1.25;font-weight:600;color:#0b1220;margin:0;
+    display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;overflow:hidden;min-height:46px;}
+  .excerpt{font-size:14px;line-height:1.55;color:#4a5568;margin:0;
+    display:-webkit-box;-webkit-line-clamp:4;-webkit-box-orient:vertical;overflow:hidden;min-height:87px;}
+  .post-link{text-decoration:none;color:inherit;display:flex;flex-direction:column;height:100%;}
+  .skeleton{animation:shimmer 1.2s infinite linear;
+    background:linear-gradient(90deg,#eee 25%,#f7f7f7 37%,#eee 63%);background-size:400% 100%;}
+  @keyframes shimmer{0%{background-position:100% 0}100%{background-position:-100% 0}}
+  .rss-error{color:#b00020;font-weight:500;margin-top:8px;}
+</style>
+</head>
+<body>
+<section id="rss-grid">
+  <div class="rss-container">
+    <div class="rss-list" role="list"></div>
+    <div class="rss-error" hidden>No se pudo cargar el feed.</div>
+  </div>
+</section>
+
+<script>
+(function () {
+  const FEED_XML = "https://r.jina.ai/https://tuasesorprofesional.com/feed/";  // primario (CORS abierto)
+  const FEED_JSON = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent("https://tuasesorprofesional.com/feed/"); // fallback
+  const LIST = document.querySelector(".rss-list");
+  const ERROR = document.querySelector(".rss-error");
+  const MAX_POSTS = 4;
+  const MAX_WORDS = 28;
+
+  // skeletons
+  for (let i=0;i<MAX_POSTS;i++){
+    const sk=document.createElement("div");
+    sk.className="post-card";
+    sk.innerHTML=`<div class="image-wrap skeleton"></div>
+      <div class="content">
+        <h3 class="title skeleton" style="height:42px;border-radius:8px;"></h3>
+        <p class="excerpt skeleton" style="height:88px;border-radius:8px;"></p>
+      </div>`;
+    LIST.appendChild(sk);
+  }
+
+  // intento 1: XML vía r.jina.ai
+  fetch(FEED_XML, {cache:"no-store"})
+    .then(r=>r.text())
+    .then(txt=>{
+      const xml = new DOMParser().parseFromString(txt, "text/xml");
+      const items = Array.from(xml.querySelectorAll("item")).slice(0, MAX_POSTS);
+      if(!items.length) throw 0;
+      LIST.innerHTML = "";
+      items.forEach(it=>{
+        const title = q(it,"title");
+        const link  = q(it,"link");
+        const cat   = q(it,"category") || "General";
+        const html  = q(it,"content\:encoded") || q(it,"description") || "";
+        const excerpt = toExcerpt(html, MAX_WORDS);
+        const img = bestImageXML(it, html);
+        LIST.appendChild(buildCard({title, link, category:cat, excerpt, image:img}));
+      });
+    })
+    .catch(()=>{
+      // intento 2: JSON fallback
+      fetch(FEED_JSON, {cache:"no-store"})
+        .then(r=>r.json())
+        .then(data=>{
+          if(!data.items || !data.items.length) throw 0;
+          const items = data.items.slice(0, MAX_POSTS);
+          LIST.innerHTML = "";
+          items.forEach(it=>{
+            const title = it.title || "";
+            const link  = it.link || "#";
+            const cat   = (it.categories && it.categories[0]) || "General";
+            const html  = it.content || it.description || "";
+            const excerpt = toExcerpt(html, MAX_WORDS);
+            const img = bestImageJSON(it, html);
+            LIST.appendChild(buildCard({title, link, category:cat, excerpt, image:img}));
+          });
+        })
+        .catch(()=>{ LIST.innerHTML=""; ERROR.hidden=false; });
+    });
+
+  /* ---------- helpers ---------- */
+  function q(parent, selector){
+    const el = parent.querySelector(selector);
+    return el ? (el.textContent || "").trim() : "";
+  }
+  function toExcerpt(html, maxWords){
+    const txt = strip(html).replace(/\s+/g," ").trim();
+    const words = txt.split(" ").filter(Boolean);
+    return words.length <= maxWords ? txt : words.slice(0,maxWords).join(" ") + "…";
+  }
+  function strip(s){ const d=document.createElement("div"); d.innerHTML=s; return d.textContent || d.innerText || ""; }
+
+  function bestImageXML(item, html){
+    // media:content / enclosure con url grande
+    const media = item.querySelector("media\:content, content, enclosure");
+    if (media && media.getAttribute("url")) return cleanWpSize(media.getAttribute("url"));
+    // intentar srcset del contenido
+    const ss = (html||"").match(/srcset=["']([^"']+)["']/i);
+    if (ss) return cleanWpSize(pickLargestFromSrcset(ss[1]));
+    const m = (html||"").match(/<img[^>]+src=["']([^"']+)["']/i);
+    return m && m[1] ? cleanWpSize(m[1]) : "";
+  }
+  function bestImageJSON(it, html){
+    if (it.enclosure && it.enclosure.link) return cleanWpSize(it.enclosure.link);
+    if (it.thumbnail) return cleanWpSize(it.thumbnail);
+    const ss = (html||"").match(/srcset=["']([^"']+)["']/i);
+    if (ss) return cleanWpSize(pickLargestFromSrcset(ss[1]));
+    const m = (html||"").match(/<img[^>]+src=["']([^"']+)["']/i);
+    return m && m[1] ? cleanWpSize(m[1]) : "";
+  }
+
+  function pickLargestFromSrcset(srcset){
+    const parts = srcset.split(',').map(s=>s.trim()).map(e=>{
+      const m = e.match(/(\S+)\s+(\d+)w/); return m ? {url:m[1], w:parseInt(m[2],10)} : null;
+    }).filter(Boolean);
+    if(!parts.length) return "";
+    parts.sort((a,b)=>b.w-a.w);
+    return parts[0].url;
+  }
+  function cleanWpSize(u){
+    if(!u) return u;
+    try{
+      const url = new URL(u, window.location.href);
+      url.searchParams.delete('resize'); url.searchParams.delete('w'); url.searchParams.delete('h'); url.searchParams.delete('quality');
+      url.pathname = url.pathname
+        .replace(/-\d+x\d+(?=\.[a-zA-Z]{3,4}$)/, "")
+        .replace(/-scaled(?=\.[a-zA-Z]{3,4}$)/, "");
+      return url.toString();
+    }catch(e){
+      return u.replace(/-\d+x\d+(?=\.[a-zA-Z]{3,4}(\?|$))/, "").replace(/-scaled(?=\.[a-zA-Z]{3,4}(\?|$))/, "");
+    }
+  }
+
+  function buildCard({title, link, category, excerpt, image}){
+    const card = document.createElement("article");
+    card.className = "post-card";
+    card.innerHTML = `
+      <a class="post-link" href="${link}" target="_blank" rel="noopener">
+        <div class="image-wrap">
+          ${image ? `<img src="${image}" alt="" loading="lazy" decoding="async" />` : `<div class="skeleton" style="width:100%;height:100%;"></div>`}
+          <span class="badge">${esc(category)}</span>
+        </div>
+        <div class="content">
+          <h3 class="title">${esc(title)}</h3>
+          <p class="excerpt">${esc(excerpt)}</p>
+        </div>
+      </a>`;
+    return card;
+  }
+  function esc(str){
+    return String(str).replace(/&/g,"&amp;").replace(/</g,"&lt;").replace(/>/g,"&gt;")
+                      .replace(/"/g,"&quot;").replace(/'/g,"&#39;");
+  }
+})();
+</script>
+</body>
+</html>
