@@ -65,7 +65,7 @@
 
 <script>
 (function () {
-  const FEED_XML = "https://r.jina.ai/https://tuasesorprofesional.com/feed.xml";  // primario (CORS abierto)
+  const FEED_XML = "https://tuasesorprofesional.com/feed.xml";  // primario (CORS abierto)
   const FEED_JSON = "https://api.rss2json.com/v1/api.json?rss_url=" + encodeURIComponent("https://tuasesorprofesional.com/feed.xml"); // fallback
   const LIST = document.querySelector(".rss-list");
   const ERROR = document.querySelector(".rss-error");
